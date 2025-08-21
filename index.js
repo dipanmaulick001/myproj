@@ -1,67 +1,50 @@
-const express = require('express');
+const express = require('express'); 
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = "ramdomharkiratilovekiara"
+const path = require('path');
 const app = express();
+
+const JWT_SECRET = "ramdomharkiratilovekiara";
 app.use(express.json());
 
 const users = [];
-app.get("/" , function(req,res){
-    res.sendFile(__dirname + "/public/index.html")
-})
 
-app.post("/signup", function (req, res) {
-    const username = req.body.username;
-    const password = req.body.password;
+// Serve frontend
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public/index.html"));
+});
 
-    users.push({
-        username: username,
-        password: password
-    })    
+// Signup route
+app.post("/signup", (req, res) => {
+    const { username, password } = req.body;
 
-    res.json({
-        message: "You are signed up"
-    })
-
-    console.log(users)
-    
-})
-
-app.post("/signin", function(req, res) {
-    
-    const username = req.body.username;
-    const password = req.body.password;
-
-    // maps and filter
-    let foundUser = null;
-
-    for (let i = 0; i<users.length; i++) {
-        if (users[i].username == username && users[i].password == password) {
-            foundUser = users[i]
-        }
+    // Check if user already exists
+    if (users.find(u => u.username === username)) {
+        return res.status(400).json({ message: "Username already exists" });
     }
 
-    if (foundUser) {
-        const token = jwt.sign({
-            username: username,
-            password: password,
-            
-        }, JWT_SECRET) ;
+    users.push({ username, password });
+    console.log("Users:", users);
+    res.json({ message: "Signed up successfully" });
+});
 
-        // foundUser.token = token;
-        res.json({
-            token: token
-        })
-    } else {
-        res.status(403).send({
-            message: "Invalid username or password"
-        })
+// Signin route
+app.post("/signin", (req, res) => {
+    const { username, password } = req.body;
+
+    const foundUser = users.find(u => u.username === username && u.password === password);
+
+    if (!foundUser) {
+        return res.status(403).json({ message: "Invalid username or password" });
     }
-    console.log(users)
-})
 
+    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: "1h" });
+    res.json({ token });
+});
+
+// Auth middleware
 function authMiddleware(req, res, next) {
     const token = req.headers.token;
-    console.log("🔹 Incoming token:", token);  //  DEBUG 1
+    console.log("Incoming token:", token);
 
     if (!token) {
         return res.status(401).json({ message: "No token provided" });
@@ -69,31 +52,26 @@ function authMiddleware(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        console.log("✅ Decoded token:", decoded);  //  DEBUG 2
         req.username = decoded.username;
         next();
     } catch (e) {
-        console.error(" JWT verification failed:", e.message);  //  DEBUG 3
+        console.error("JWT verification failed:", e.message);
         return res.status(401).json({ message: "Invalid or expired token" });
     }
 }
 
-app.get("/me", authMiddleware, function (req, res) {
-    console.log("Inside /me route, username:", req.username);  //  DEBUG 4
-
+// /me route
+app.get("/me", authMiddleware, (req, res) => {
     const foundUser = users.find(u => u.username === req.username);
-    if (foundUser) {
-        res.json({
-            username: foundUser.username,
-            password: foundUser.password
-        });
-    } else {
-        res.status(401).json({ message: "User not found" });
+
+    if (!foundUser) {
+        return res.status(404).json({ message: "User not found" });
     }
+
+    // Only send username, not password
+    res.json({ username: foundUser.username });
 });
 
-
-
-
-
-app.listen(3001);// that the http server is listening on port 3001
+app.listen(3001, () => {
+    console.log("Server running on port 3001");
+});
